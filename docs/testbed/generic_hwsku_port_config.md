@@ -121,7 +121,7 @@ python3 ansible/scripts/generate_port_config.py \
     --hostname str4-7060x6-64pe-11 \
     --platform-json ~/sonic-buildimage/device/arista/x86_64-arista_7060x6_64pe/platform.json \
     --full-config \
-    -o /tmp/port_config_override.json
+    -o /tmp/golden_config_db.json
 ```
 
 Or auto-detect `platform.json` from a `sonic-buildimage` checkout:
@@ -132,17 +132,31 @@ python3 ansible/scripts/generate_port_config.py \
     --devices-csv ansible/files/sonic_str4_devices.csv \
     --hostname str4-7060x6-64pe-11 \
     --buildimage-root ~/sonic-buildimage \
-    -o /tmp/port_config_override.json
+    -o /tmp/golden_config_db.json
 ```
 
-### Step 2: Apply to DUT (after load_minigraph)
+### Step 2: Automatic — via deploy-mg (golden config override)
+
+When `deploy-mg` runs, the golden config now automatically generates the PORT table
+from `links.csv` port speeds + the DUT's `platform.json`. The flow is:
+
+```
+deploy-mg → conn_graph_facts (reads links.csv) → port_speeds
+port_speeds + platform.json → generate_port_table_from_platform() → PORT table
+PORT table → golden_config_db.json
+config load_minigraph --override_config → golden config PORT overrides minigraph
+```
+
+No manual steps needed — just update `links.csv` and `devices.csv`, then run `deploy-mg`.
+
+### Step 2 (Alternative): Manual — apply standalone override
 
 ```bash
 # Copy override to DUT
-scp /tmp/port_config_override.json dut:/etc/sonic/
+scp /tmp/golden_config_db.json dut:/etc/sonic/
 
 # Apply (overwrites PORT table in config_db)
-ssh dut "sudo sonic-cfggen -j /etc/sonic/port_config_override.json --write-to-db && sudo config save -y"
+ssh dut "sudo sonic-cfggen -j /etc/sonic/golden_config_db.json --write-to-db && sudo config save -y"
 ```
 
 ### Changing Breakout (update links.csv)
@@ -150,25 +164,38 @@ ssh dut "sudo sonic-cfggen -j /etc/sonic/port_config_override.json --write-to-db
 To remap `links.csv` for a new breakout layout:
 
 ```bash
+# Uniform breakout — all cages get the same mode
 python3 ansible/scripts/update_links_for_breakout.py \
     --links-csv ansible/files/sonic_str4_links.csv \
     --hostname str4-7060x6-64pe-11 \
     --target-breakout 2x400G \
     --dry-run
 
+# Mixed breakout — different modes per port range
+python3 ansible/scripts/update_links_for_breakout.py \
+    --links-csv ansible/files/sonic_str4_links.csv \
+    --hostname str4-7060x6-64pe-11 \
+    --target-breakout "1x800G:0-255,2x400G:256-504" \
+    --dry-run
+
 # Remove --dry-run to apply
 ```
+
+The `--target-breakout` syntax determines which ports are broken out:
+- **Uniform** (`2x400G`): All cages with existing links.csv entries get the same breakout.
+- **Mixed** (`"1x800G:0-255,2x400G:256-504"`): Specify breakout per port range.
+  Port ranges map to physical cages via `--lanes-per-cage` (default: 8).
 
 ## Integration with Existing Flow
 
 All other config_db tables (DEVICE_NEIGHBOR, VLAN, BGP_NEIGHBOR, LOOPBACK, etc.)
-continue to come from minigraph via `config load_minigraph`. This script only
+continue to come from minigraph via `config load_minigraph`. The golden config only
 overrides the PORT table:
 
 ```
-config load_minigraph -y         ← all tables from minigraph
-generate_port_config.py          ← PORT override from links.csv + platform.json
-sonic-cfggen -j ... --write-to-db  ← overwrite just PORT
+config load_minigraph --override_config -y
+  ← all tables from minigraph
+  ← PORT table overridden by golden_config_db.json (from links.csv + platform.json)
 ```
 
 ## Validation
@@ -205,13 +232,14 @@ ssh dut "show bgp summary"
 
 Save the output for comparison after conversion.
 
-### Step 2: Update links.csv for new breakout
+### Step 2: Preview breakout changes (dry-run)
 
 Preview the changes first with `--dry-run`:
 
 ```bash
 # From sonic-mgmt/ansible/ directory
 ./testbed-cli.sh update-breakout str4-t1-lag \
+    str4-inventory ~/.password \
     files/sonic_str4_links.csv 2x400G --dry-run
 ```
 
@@ -219,13 +247,6 @@ Verify the output shows:
 - Correct number of new DUT entries (128 ports for O128)
 - VLANs preserved for existing ports, new VLANs assigned for new ports
 - Trunk VLAN range updated for root fanout
-
-Apply when satisfied:
-
-```bash
-./testbed-cli.sh update-breakout str4-t1-lag \
-    files/sonic_str4_links.csv 2x400G
-```
 
 ### Step 3: Update devices.csv — change HwSKU
 
@@ -238,43 +259,28 @@ str4-7060x6-64pe-11,...,Arista-7060X6-64PE-C256S2,...
 str4-7060x6-64pe-11,...,Arista-7060X6-64PE-O128S2,...
 ```
 
-### Step 4: Redeploy leaf fanout
+### Step 4: Run end-to-end breakout update
 
-The leaf fanout needs to be reconfigured for the new breakout and VLANs:
-
-```bash
-cd ansible
-ansible-playbook -i str4-inventory fanout.yml \
-    -l str4-fanout-01 \
-    --vault-password-file ~/.password
-```
-
-### Step 5: Update root fanout VLAN trunks
-
-The root fanout trunk ports need the updated VLAN range:
+This single command performs all remaining steps — updates links.csv, redeploys
+the leaf fanout switch(es), updates root fanout VLAN trunks, and deploys
+minigraph + golden config to the DUT:
 
 ```bash
-ansible-playbook -i str4-inventory fanout_connect.yml \
-    --vault-password-file ~/.password \
-    -e dut=str4-7060x6-64pe-11
-```
-
-### Step 6: Deploy minigraph with golden config
-
-This generates minigraph with the new port layout, builds the golden config
-(which replaces the PORT table using platform.json), and applies both:
-
-```bash
-./testbed-cli.sh deploy-mg str4-t1-lag str4-inventory ~/.password
+./testbed-cli.sh update-breakout str4-t1-lag \
+    str4-inventory ~/.password \
+    files/sonic_str4_links.csv 2x400G
 ```
 
 What happens under the hood:
-1. Minigraph is generated with the new 128-port layout
-2. `generate_golden_config_db` rebuilds the PORT table from `platform.json`
+1. `update_links_for_breakout.py` remaps links.csv entries for the new breakout
+2. Leaf fanout switch(es) detected from links.csv are redeployed via `fanout.yml`
+3. Root fanout VLAN trunks are updated via `fanout_connect.yml`
+4. Minigraph is generated with the new port layout
+5. `generate_golden_config_db` rebuilds the PORT table from `platform.json`
    with correct lanes, aliases, indices, speed, and FEC
-3. `config load_minigraph --override_config -y` applies minigraph + PORT override
+6. `config load_minigraph --override_config -y` applies minigraph + PORT override
 
-### Step 7: Verify port status
+### Step 5: Verify port status
 
 Wait ~60 seconds for ports to come up, then verify:
 
@@ -295,7 +301,7 @@ ssh dut "show interfaces status | awk '{print \$5}' | sort | uniq -c"
 ssh dut "sonic-cfggen -d --var-json PORT" | python3 -m json.tool | head -30
 ```
 
-### Step 8: Verify BGP sessions
+### Step 6: Verify BGP sessions
 
 ```bash
 # All BGP neighbors should be in Established state
@@ -308,7 +314,7 @@ ssh dut "show bgp summary | grep -v Established | grep -v 'Neighbor\|entries'"
 ssh dut "show bgp summary | grep -c Established"
 ```
 
-### Step 9: Verify LLDP neighbors
+### Step 7: Verify LLDP neighbors
 
 ```bash
 # LLDP confirms physical connectivity matches links.csv
@@ -316,7 +322,7 @@ ssh dut "show lldp table"
 ssh dut "show lldp table | wc -l"
 ```
 
-### Step 10: Run sanity tests
+### Step 8: Run sanity tests
 
 ```bash
 cd tests

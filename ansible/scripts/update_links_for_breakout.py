@@ -124,15 +124,17 @@ def parse_vlan_field(vlan_str):
     vlans = set()
     if not vlan_str or not vlan_str.strip():
         return vlans
-    for part in vlan_str.strip().split(','):
-        part = part.strip()
+    vlan_str = vlan_str.strip().strip('"')
+    for part in vlan_str.split(','):
+        part = part.strip().strip('"')
         if '-' in part:
             start, end = part.split('-', 1)
-            vlans.update(range(int(start), int(end) + 1))
+            vlans.update(range(int(start.strip()), int(end.strip()) + 1))
         else:
             try:
                 vlans.add(int(part))
             except ValueError:
+                # Skip non-numeric VLAN entries (e.g., empty strings)
                 pass
     return vlans
 

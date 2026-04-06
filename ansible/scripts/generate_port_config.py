@@ -264,11 +264,7 @@ def validate_port_config(port_speeds, platform_json_path, hwsku):
 
     # Check 4: HwSKU-specific pattern validation
     if hwsku and hwsku != 'Unknown':
-        total_non_mgmt = len([p for p in port_speeds if p.startswith('Ethernet') and
-                              p[8:].isdigit() and int(p[8:]) < 512])
-        total_cages = len(plat_intfs)
         non_mgmt_cages = len([k for k in plat_intfs if int(k.replace('Ethernet', '')) < 512])
-        used_cages = len([c for c in cage_ports if int(c.replace('Ethernet', '')) < 512])
 
         # Detect copper pattern (C* HwSKUs use only odd cages)
         if re.search(r'-C\d+', hwsku):
