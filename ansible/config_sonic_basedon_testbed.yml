@@ -217,6 +217,14 @@
     delegate_to: localhost
     ignore_errors: true
 
+  - name: Extract port speeds from links.csv via conn_graph_facts
+    set_fact:
+      links_port_speeds: "{{ links_port_speeds | default({}) | combine({item.key: item.value.speed}) }}"
+    loop: "{{ device_conn[inventory_hostname] | default({}) | dict2items }}"
+    loop_control:
+      label: "{{ item.key }}"
+    when: device_conn is defined and device_conn[inventory_hostname] is defined
+
   - set_fact:
       type: "unknown"
     when: hostvars[inventory_hostname].type is not defined
@@ -824,6 +832,7 @@
           vm_configuration: "{{ configuration if topo == 't1-filterleaf-lag' else omit }}"
           is_lit_mode: "{{ is_lit_mode | default(true) }}"
           npu_index: "{{ dut_index | default(0) | int }}"
+          port_speeds: "{{ links_port_speeds | default(omit) }}"
         become: true
 
       - name: Copy macsec profile json to dut

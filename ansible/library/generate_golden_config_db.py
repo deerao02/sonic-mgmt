@@ -180,7 +180,8 @@ class GenerateGoldenConfigDBModule(object):
                                     hwsku=dict(required=False, type='str', default=None),
                                     vm_configuration=dict(required=False, type='dict', default={}),
                                     is_lit_mode=dict(required=False, type='bool', default=True),
-                                    npu_index=dict(required=False, type='int', default=0)),
+                                    npu_index=dict(required=False, type='int', default=0),
+                                    port_speeds=dict(required=False, type='dict', default=None)),
                                     supports_check_mode=True)
         self.topo_name = self.module.params['topo_name']
         self.port_index_map = self.module.params['port_index_map']
@@ -192,6 +193,7 @@ class GenerateGoldenConfigDBModule(object):
         self.vm_configuration = self.module.params['vm_configuration']
         self.is_lit_mode = self.module.params['is_lit_mode']
         self.npu_index = self.module.params['npu_index']
+        self.port_speeds = self.module.params['port_speeds']
 
     def generate_mgfx_golden_config_db(self):
         rc, out, err = self.module.run_command("sonic-cfggen -H -m -j /etc/sonic/init_cfg.json --print-data")
@@ -812,6 +814,19 @@ class GenerateGoldenConfigDBModule(object):
                     "has_per_asic_scope": "True",
                 }
             })
+
+        # Override PORT table from links.csv port speeds + platform.json
+        # This allows golden config to define the port layout from links.csv
+        # instead of relying on port_config.ini
+        if self.port_speeds:
+            platform_json_path = os.path.join(
+                '/usr/share/sonic/device', self.platform, 'platform.json')
+            port_table = generate_port_table_from_platform(self.port_speeds, platform_json_path)
+            if port_table:
+                config_dict = json.loads(config)
+                config_dict["PORT"] = port_table
+                config = json.dumps(config_dict, indent=4)
+                module_msg = module_msg + " with PORT override from links.csv"
 
         with open(GOLDEN_CONFIG_DB_PATH, "w") as temp_file:
             temp_file.write(config)
