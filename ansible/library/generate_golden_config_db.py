@@ -1106,7 +1106,7 @@ class GenerateGoldenConfigDBModule(object):
         Enables FEC for high-speed ports. PORT table rebuild from platform.json
         is handled separately by override_port_table_from_platform().
         """
-        SUPPORTED_TOPO = ["ft2-64", "lt2-p32o64", "lt2-o128", "ft2-o128"]
+        SUPPORTED_TOPO = ["ft2-64", "ft2-16", "lt2-p32o64", "lt2-o128", "ft2-o128"]
         if self.topo_name not in SUPPORTED_TOPO:
             return "{}"
         SUPPORTED_PORT_SPEED = ["200000", "400000", "800000"]
@@ -1155,7 +1155,7 @@ class GenerateGoldenConfigDBModule(object):
         """
         Generate golden_config for t0-f2 to enable link_training on server facing ports.
         """
-        SUPPORTED_TOPO = ["t0-f2-d40u8"]
+        SUPPORTED_TOPO = ["t0-f2-d40u8", "t0-f2-d40u8-po2vlan"]
         if self.topo_name not in SUPPORTED_TOPO:
             return "{}"
         ori_config = json.loads(self.get_config_from_minigraph())
