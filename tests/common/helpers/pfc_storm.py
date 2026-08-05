@@ -272,7 +272,7 @@ class PFCStorm(object):
         if self.asic_type == 'vs':
             self.pfc_start_template = os.path.join(
                 TEMPLATES_DIR, "pfc_storm_eos.j2")
-        elif self.dut.topo_type == 't2' and self.peer_device.os == 'sonic':
+        elif self.dut.topo_type in ('t2', 'lt2', 'ft2') and self.peer_device.os == 'sonic':
             self.pfc_start_template = os.path.join(
                 TEMPLATES_DIR, "pfc_storm_{}_t2.j2".format(self.peer_device.os))
         elif self.fanout_asic_type == 'mellanox' and self.peer_device.os == 'sonic':
@@ -297,7 +297,7 @@ class PFCStorm(object):
         if self.asic_type == 'vs':
             self.pfc_stop_template = os.path.join(
                 TEMPLATES_DIR, "pfc_storm_stop_eos.j2")
-        elif self.dut.topo_type == 't2' and self.peer_device.os == 'sonic':
+        elif self.dut.topo_type in ('t2', 'lt2', 'ft2') and self.peer_device.os == 'sonic':
             self.pfc_stop_template = os.path.join(
                 TEMPLATES_DIR, "pfc_storm_stop_{}_t2.j2".format(self.peer_device.os))
         elif self.fanout_asic_type == 'mellanox' and self.peer_device.os == 'sonic':
@@ -433,7 +433,7 @@ class PFCMultiStorm(object):
                              'pfc_fanout_interface': self.peer_params[peer_dev]['intfs']}
 
             q_idx, frames_cnt, gen_file = self._get_pfc_params(peer_dev)
-            if self.duthost.topo_type == 't2' and self.fanouthosts[peer_dev].os == 'sonic':
+            if self.duthost.topo_type in ('t2', 'lt2', 'ft2') and self.fanouthosts[peer_dev].os == 'sonic':
                 gen_file = 'pfc_gen_t2.py'
                 pfc_send_time = 60
             else:
