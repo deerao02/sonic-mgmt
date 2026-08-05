@@ -307,6 +307,20 @@ class TestPfcwdAllPortStorm(object):
             if action == "storm":
                 baseline_counters = get_pfc_storm_baseline_counters(duthost, storm_hndle)
                 storm_hndle.start_pfc_storm()
+                for peer_dev, storm in storm_hndle.storm_handle.items():
+                    interfaces = storm_hndle.peer_params[peer_dev]['intfs'].split(',')
+                    interface_checks = " ".join(interfaces)
+                    result = storm.peer_device.shell(
+                        "sleep 2; "
+                        "echo ===PFC_GEN_PROCESS===; pgrep -af '[p]fc_gen.py' || true; "
+                        "echo ===PFC_GEN_LOG===; tail -50 /tmp/pfc_gen.log 2>/dev/null || true; "
+                        "echo ===MISSING_INTERFACES===; "
+                        "for intf in {}; do "
+                        "[ -e /sys/class/net/$intf ] || echo $intf; "
+                        "done".format(interface_checks),
+                        module_ignore_errors=True
+                    )
+                    logger.info("PFC generator state on %s:\n%s", peer_dev, result)
                 threshold = self.PFC_STORM_THRESHOLD_PERCENTAGE
             else:  # restore
                 baseline_counters = None
