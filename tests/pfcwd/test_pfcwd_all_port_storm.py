@@ -310,6 +310,7 @@ class TestPfcwdAllPortStorm(object):
                 for peer_dev, storm in storm_hndle.storm_handle.items():
                     interfaces = storm_hndle.peer_params[peer_dev]['intfs'].split(',')
                     interface_checks = " ".join(interfaces)
+                    sample_interfaces = " ".join(interfaces[:8])
                     result = storm.peer_device.shell(
                         "sleep 2; "
                         "echo ===PFC_GEN_PROCESS===; pgrep -af '[p]fc_gen.py' || true; "
@@ -317,7 +318,24 @@ class TestPfcwdAllPortStorm(object):
                         "echo ===MISSING_INTERFACES===; "
                         "for intf in {}; do "
                         "[ -e /sys/class/net/$intf ] || echo $intf; "
-                        "done".format(interface_checks),
+                        "done; "
+                        "echo ===TX_SNAPSHOT_1===; "
+                        "for intf in {}; do "
+                        "printf '%s oper=%s carrier=%s tx_packets=%s\\n' "
+                        "$intf $(cat /sys/class/net/$intf/operstate) "
+                        "$(cat /sys/class/net/$intf/carrier) "
+                        "$(cat /sys/class/net/$intf/statistics/tx_packets); "
+                        "done; "
+                        "sleep 2; "
+                        "echo ===TX_SNAPSHOT_2===; "
+                        "for intf in {}; do "
+                        "printf '%s oper=%s carrier=%s tx_packets=%s\\n' "
+                        "$intf $(cat /sys/class/net/$intf/operstate) "
+                        "$(cat /sys/class/net/$intf/carrier) "
+                        "$(cat /sys/class/net/$intf/statistics/tx_packets); "
+                        "done; "
+                        "echo ===FANOUT_PFC_COUNTERS===; show pfc counters 2>&1 | head -40"
+                        .format(interface_checks, sample_interfaces, sample_interfaces),
                         module_ignore_errors=True
                     )
                     logger.info("PFC generator state on %s:\n%s", peer_dev, result)
