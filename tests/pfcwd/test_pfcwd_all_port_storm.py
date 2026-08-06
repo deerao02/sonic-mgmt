@@ -115,7 +115,16 @@ def storm_test_setup_restore(setup_pfc_test, enum_fanout_graph_facts, duthosts, 
     asic_type = duthost.facts['asic_type']
     setup_info = setup_pfc_test
     neighbors = setup_info['neighbors']
-    port_list = setup_info['port_list']
+    interface_status = duthost.get_interfaces_status()
+    port_list = [
+        port for port in setup_info['port_list']
+        if interface_status.get(port, {}).get('admin') == 'up'
+        and interface_status.get(port, {}).get('oper') == 'up'
+    ]
+    inactive_ports = sorted(set(setup_info['port_list']) - set(port_list))
+    logger.info("Skipping %d inactive ports from the all-port storm: %s",
+                len(inactive_ports), inactive_ports)
+    pytest_assert(port_list, "No active ports available for the all-port PFC storm test")
     ports = (" ").join(port_list)
     pfc_queue_index = 3
     pfc_frames_number = 10000000
