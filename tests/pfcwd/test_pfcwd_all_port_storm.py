@@ -313,7 +313,7 @@ class TestPfcwdAllPortStorm(object):
                     sample_interfaces = " ".join(interfaces[:8])
                     result = storm.peer_device.shell(
                         "sleep 2; "
-                        "echo ===PFC_GEN_PROCESS===; pgrep -af '[p]fc_gen.py' || true; "
+                        "echo ===PFC_GEN_PROCESS===; pgrep -af '[p]fc_gen.*\\.py' || true; "
                         "echo ===PFC_GEN_LOG===; tail -50 /tmp/pfc_gen.log 2>/dev/null || true; "
                         "echo ===MISSING_INTERFACES===; "
                         "for intf in {}; do "
